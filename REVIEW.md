@@ -1,6 +1,6 @@
 # Code review
 
-This review describes the starter implementation before fixes. Findings are ranked by expected business impact; the knowledge leak is first because any member could retrieve another club's knowledge without knowing member IDs, and the query returned up to five chunks at once. Findings 1, 2, and 5 have since been fixed; the historical traces remain as evidence.
+This review describes the starter implementation before fixes. Findings are ranked by expected business impact; the knowledge leak is first because any member could retrieve another club's knowledge without knowing member IDs, and the query returned up to five chunks at once. All five findings have since been addressed within the agreed scope; the historical traces remain as evidence.
 
 ## 1. Knowledge search crosses club boundaries — fixed in Part 2
 
@@ -37,7 +37,7 @@ These are the literal response bodies from the running app, also preserved in `T
 
 The pre-fix introduction trace and post-fix HTTP 404 response are in `TERMINAL_LOG.md`. Focused tests also cover both cross-club ID positions, restricted attributes, low-confidence attributes, and valid same-club introductions.
 
-## 3. Caller controls the payment amount
+## 3. Caller controls the payment amount — fixed for existing bookings
 
 - **Location:** `app/routers/bookings.py:20-29, 33-41`; `app/schemas.py:4-5`
 - **Category:** Data Integrity / Security
@@ -45,13 +45,17 @@ The pre-fix introduction trace and post-fix HTTP 404 response are in `TERMINAL_L
 - **Description:** The booking lookup proves ownership, but `confirm_payment` charges `payload.amount_cents` without comparing it to the booking's stored `amount_cents`. A member can submit a small positive amount for an expensive booking and still cause its status to become `confirmed`; the schema checks only that the amount is an integer.
 - **Recommended fix:** Derive the charge amount from the server-side booking, reject unexpected client amounts if the request retains that field, and confirm only after a successful charge for the stored amount.
 
-## 4. Payment retries can create duplicate charges
+The direct confirmation route now checks the submitted amount against `Booking.amount_cents` before both new charges and confirmed replays, then uses the stored amount for the attempt and provider call. Regression tests cover zero, tiny, and other mismatched amounts. The session flow creates a new booking from a caller-provided amount and has no server-side price/quote; per the user's scope decision, that separate pricing policy was not invented here.
+
+## 4. Payment retries can create duplicate charges — fixed with reconciliation limit
 
 - **Location:** `app/routers/bookings.py:20-41`; `app/services/session_flow.py:31-54`; `app/models.py:91-99`
 - **Category:** Data Integrity
 - **Severity:** Critical
 - **Description:** The direct payment endpoint can charge an already confirmed booking again, and the session flow charges before persisting a durable attempt or idempotency key. A retry after a crash at `session_flow.py:38-39` can therefore charge a second time while the database still shows an awaiting-confirmation session; `PaymentAttempt.idempotency_key` exists but is never used in either flow.
 - **Recommended fix:** Use a stable booking or session payment key with provider-side idempotency, persist and reconcile an attempt around ambiguous outcomes, and make already successful confirmations return the prior result. Lock or atomically claim the payment transition so concurrent requests cannot both charge.
+
+Both paths now commit an initiated attempt before the first charge, keyed by booking or session ID, and reuse the recorded result on replay. A pending attempt uses lookup, not another charge. The mock provider's keyed outcome survives requests in one process but not process-state loss; when it cannot resolve a durable pending attempt, the API returns HTTP 504 for reconciliation without charging again. Thus duplicate-charge prevention is tested, while automatic recovery after lost provider state is not claimed.
 
 ## 5. Restricted attributes feed matching scores — fixed
 
@@ -63,6 +67,6 @@ The pre-fix introduction trace and post-fix HTTP 404 response are in `TERMINAL_L
 
 ## Verification limits
 
-The Part 2 knowledge trace uses the seeded PostgreSQL database, and the new regression test failed before the filter and passed afterward. The introduction trace uses isolated SQLite data, not seeded PostgreSQL; its post-fix response is HTTP 404. The introduction and matching regression suite passed (`9 passed`) against PostgreSQL, including a test where a legacy restricted-only embedding cannot affect a score. Findings 3–4 remain supported by code-path analysis pending their fixes.
+The Part 2 knowledge trace uses the seeded PostgreSQL database, and the new regression test failed before the filter and passed afterward. The introduction trace uses isolated SQLite data, not seeded PostgreSQL; its post-fix response is HTTP 404. The introduction and matching regression suite passed (`9 passed`) against PostgreSQL, including a test where a legacy restricted-only embedding cannot affect a score. Payment regressions failed before the fixes and the full PostgreSQL suite passed afterward (`29 passed`); the mock-provider recovery caveat above remains.
 
 The existing, uncommitted `.env.example` edit contains what appears to be an Airtable personal access token. Keep that value out of commits and submission artifacts; if it is a real token, revoke or rotate it. This review did not change the file or reproduce the token.

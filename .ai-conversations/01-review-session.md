@@ -31,3 +31,9 @@ I added `KnowledgeChunk.club_id == member.club_id` before similarity ordering an
 ## Issue 2 correction: matching also needs the restricted check
 
 The user asked to fix issues 2, 4, and 3 in that order and emphasized the eventual Part 3 idempotency and restricted-data notes. My first issue 2 patch checked introduction text only; the user corrected the scope: matching must also exclude restricted attributes, including data already embedded. I added the shared `restricted IS FALSE` profile filter and made ranking recompute both vectors from eligible attributes so legacy stored vectors cannot affect scores. The new matching tests failed before this correction and passed afterward; the focused introduction and matching run returned nine passing tests.
+
+## Issues 4 and 3: payment replay and stored booking amount
+
+The first payment regression run produced four failures: duplicate direct charge/attempt behavior, a timeout replay charge, a simulated session-crash replay charge, and a confirmed session being reopened. The initial stable-key implementation passed those cases, but a read-only review identified that the mock provider's outcome cache is process-local. I changed both routes to commit an initiated `PaymentAttempt` before calling the provider and made existing pending attempts lookup-only. The user chose to fix underpayment for existing bookings only because session bookings have no independent server-side quote. The direct route now compares the submitted amount with the stored booking amount and charges the stored value. The completed suite passed 29 tests. A lost provider outcome still requires reconciliation (HTTP 504), but does not cause a second charge.
+
+The user selected OpenAI with `OPENAI_API_KEY` for Part 3 and asked to update required Markdown files and commit these fixes before beginning extraction work. No real extraction API call or eval has yet been recorded.

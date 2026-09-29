@@ -116,6 +116,29 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 
 The full suite after this privacy fix also passed: `15 passed, 1 warning in 1.63s`.
 
+## Issues 4 and 3 — payment bug, fix, and amount traces (2026-09-29)
+
+The new payment regressions first reproduced direct replay charging twice, a timed-out payment charging again, a session crash charging again, and a confirmed session creating another booking:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q tests/test_bookings.py tests/test_sessions.py --tb=short
+4 failed, 3 passed
+```
+
+After adding a durable initiated attempt and stable payment keys, the initial payment suite passed (`7 passed`). Additional crash/retry and process-state-loss cases exposed the need to avoid a second charge even when the mock provider's in-memory outcome is unavailable. The corrected paths return HTTP 504 for reconciliation in that case. The remaining two failing tests then isolated issue 3: mismatched caller amounts were still accepted before the amount validation was added.
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+12 passed, 2 failed
+
+# After validating against the stored booking amount and adding replay/cross-route cases:
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+.............................                                            [100%]
+29 passed, 1 warning in 2.53s
+```
+
+These tests use the real database with the mock payment provider, not a real payment network. They include replay, timeout, crash, lost volatile provider state, session/direct-route interactions, and underpayment rejection. The latter applies to existing bookings; no server-side session quote exists.
+
 ## Part 3 extraction demo
 
 Pending implementation. Record a batch run showing real LLM API calls and the per-message outcome, followed by the same batch run showing idempotency without duplicate attribute rows. Redact credentials and private member text that is not needed for the proof.

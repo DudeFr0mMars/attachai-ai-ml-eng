@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_member, require_admin
 from app.db import get_db
 from app.models import ConversationSession, Member
-from app.services.payment_mock import payment_mock_client
+from app.services.payment_mock import PaymentConflictError, PaymentTimeoutError, payment_mock_client
 from app.services.session_flow import SimulatedCrash, advance_turn
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -55,6 +55,8 @@ def turn(
     session = (
         db.query(ConversationSession)
         .filter(ConversationSession.id == session_id, ConversationSession.member_id == member.id)
+        .populate_existing()
+        .with_for_update()
         .first()
     )
     if not session:
@@ -65,3 +67,7 @@ def turn(
         return advance_turn(session, intent, payload, db)
     except SimulatedCrash:
         raise HTTPException(status_code=500, detail="simulated crash after charge, before persistence")
+    except PaymentTimeoutError:
+        raise HTTPException(status_code=504, detail="payment provider timed out")
+    except PaymentConflictError:
+        raise HTTPException(status_code=409, detail="payment amount conflicts with prior attempt")

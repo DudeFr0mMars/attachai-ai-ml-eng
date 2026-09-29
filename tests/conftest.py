@@ -9,6 +9,7 @@ import pytest
 from app.db import SessionLocal
 from app.models import Base
 from scripts.init_db import init_db
+from app.services.payment_mock import payment_mock_client
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -23,5 +24,6 @@ def db():
     for table in reversed(Base.metadata.sorted_tables):
         session.execute(table.delete())
     session.commit()
+    payment_mock_client.reset()
     yield session
     session.close()

@@ -4,7 +4,7 @@ These notes distinguish current code from planned work. Update the pending answe
 
 ## Part 2 — multi-turn session flow
 
-In `app/services/session_flow.py:31-54`, `advance_turn` calls `payment_mock_client.charge` at line 36 before saving a booking or `PaymentAttempt`; the simulated crash at lines 38-39 leaves the session awaiting confirmation even though the provider recorded a charge. A retry can charge again, so the fix should claim the payment transition and use a stable provider idempotency key, then reconcile an ambiguous result before allowing another charge; `app/models.py:96` already provides an `idempotency_key` field, but the current payment client does not accept one. This session-flow issue remains open; the selected Part 2 fix addresses the cross-club knowledge leak.
+The session flow now commits a pending booking and `PaymentAttempt(status="initiated")` before its first provider call, using the stable key `f"session:{session.id}"`. Direct confirmation similarly claims `f"booking:{booking.id}"` before charging. A replay returns a completed attempt or calls the provider's lookup with the same key; it never issues another charge for an existing initiated/unknown attempt. The mock provider remembers keyed outcomes during a process lifetime, so a simulated crash after charge can be reconciled on retry. If that volatile outcome is lost, the route returns HTTP 504 and requires external/manual reconciliation; it does not risk a second charge. This is at-most-once protection, not guaranteed automatic recovery. The direct booking route also rejects any caller amount that differs from the booking's stored `amount_cents` and charges only that stored value. Session-created bookings have no independent server-side quote in the existing schema or flow, so this amount fix deliberately covers existing bookings only, as agreed with the user.
 
 ## Part 2 — knowledge isolation fix
 
@@ -26,7 +26,7 @@ In `app/services/session_flow.py:31-54`, `advance_turn` calls `payment_mock_clie
 
 **Implemented retry strategy:** Pending implementation. The required behavior is to retry transient LLM rate limits and 5xx responses with bounded backoff, then record a permanent failure for only that message while continuing the batch; the final note must name the actual retry settings and show what happens when message 3 of 5 fails and message 4 succeeds.
 
-Payment idempotency being developed for issue 4 uses stable payment-operation keys; Part 3 extraction idempotency needs its own processed-message key. They share the principle of safe retries, but a payment key does not establish whether a message's attributes were extracted, and the LLM retry strategy remains pending until Part 3 is implemented.
+Payment idempotency for issue 4 uses stable payment-operation keys. Part 3 extraction idempotency needs its own processed-message key. They share the principle of safe retries, but a payment key does not establish whether a message's attributes were extracted, and the LLM retry strategy remains pending until Part 3 is implemented.
 
 ### Authorization, eval, and threshold
 
