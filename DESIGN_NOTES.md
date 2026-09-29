@@ -20,11 +20,13 @@ In `app/services/session_flow.py:31-54`, `advance_turn` calls `payment_mock_clie
 
 ### Restricted attributes and matching
 
-**Actual check and location:** Pending implementation. `app/services/matching_service.py:9-12` currently includes restricted rows in profile text, and stored candidate embeddings were seeded from that same builder; the final design must identify the check that excludes `restricted=True` before both query and stored candidate representations are built, and document how existing embeddings are refreshed. Restricted attributes still need to be persisted with their flag for their permitted uses.
+**Actual check and location:** `build_member_profile_text` in `app/services/matching_service.py` filters `MemberAttribute.restricted.is_(False)` together with the member and club IDs before joining text. `rank_candidates` calls that builder for both the requesting member and each candidate and embeds those filtered strings at request time; it deliberately does not score from stored `profile_embedding` values because existing vectors may contain restricted data. `refresh_member_embedding` uses the same builder for future stored vectors, and the introduction endpoint independently applies `MemberAttribute.restricted.is_(False)` before composing `reason_text`. Restricted rows remain in the database with their flag; they are excluded from these member-facing paths. Part 3 must preserve this check when it writes new attributes and refreshes vectors.
 
 ### Retry strategy and batch failures
 
 **Implemented retry strategy:** Pending implementation. The required behavior is to retry transient LLM rate limits and 5xx responses with bounded backoff, then record a permanent failure for only that message while continuing the batch; the final note must name the actual retry settings and show what happens when message 3 of 5 fails and message 4 succeeds.
+
+Payment idempotency being developed for issue 4 uses stable payment-operation keys; Part 3 extraction idempotency needs its own processed-message key. They share the principle of safe retries, but a payment key does not establish whether a message's attributes were extracted, and the LLM retry strategy remains pending until Part 3 is implemented.
 
 ### Authorization, eval, and threshold
 

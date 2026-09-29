@@ -1,6 +1,6 @@
 # Code review
 
-This review describes the starter implementation before fixes. Findings are ranked by expected business impact; the knowledge leak is first because any member can retrieve another club's knowledge without knowing member IDs, and the query returns up to five chunks at once. The Part 2 fix for finding 1 is documented below; the other findings remain open.
+This review describes the starter implementation before fixes. Findings are ranked by expected business impact; the knowledge leak is first because any member could retrieve another club's knowledge without knowing member IDs, and the query returned up to five chunks at once. Findings 1, 2, and 5 have since been fixed; the historical traces remain as evidence.
 
 ## 1. Knowledge search crosses club boundaries — fixed in Part 2
 
@@ -27,7 +27,7 @@ After — HTTP 200
 
 These are the literal response bodies from the running app, also preserved in `TERMINAL_LOG.md`.
 
-## 2. Cross-club introduction exposes restricted member data
+## 2. Cross-club introduction exposes restricted member data — fixed
 
 - **Location:** `app/routers/introductions.py:19-25`
 - **Category:** Data Isolation / Security
@@ -35,7 +35,7 @@ These are the literal response bodies from the running app, also preserved in `T
 - **Description:** Any authenticated member can supply arbitrary member IDs, including IDs from another club, and the endpoint returns those members' attribute text. It also includes `restricted=True` attributes, so a Riverside member can receive an Oakhurst member's private health information; the token check in `get_current_member` proves only that the caller is a member somewhere and does not authorize either requested ID.
 - **Recommended fix:** Resolve both members under the caller's `club_id` and reject missing or cross-club IDs before loading attributes. Filter restricted attributes from introduction input and output, apply a confidence threshold, and return an insufficient-basis response when no eligible attributes remain.
 
-The separate pre-fix introduction trace in `TERMINAL_LOG.md` shows this open issue returning restricted health text.
+The pre-fix introduction trace and post-fix HTTP 404 response are in `TERMINAL_LOG.md`. Focused tests also cover both cross-club ID positions, restricted attributes, low-confidence attributes, and valid same-club introductions.
 
 ## 3. Caller controls the payment amount
 
@@ -53,16 +53,16 @@ The separate pre-fix introduction trace in `TERMINAL_LOG.md` shows this open iss
 - **Description:** The direct payment endpoint can charge an already confirmed booking again, and the session flow charges before persisting a durable attempt or idempotency key. A retry after a crash at `session_flow.py:38-39` can therefore charge a second time while the database still shows an awaiting-confirmation session; `PaymentAttempt.idempotency_key` exists but is never used in either flow.
 - **Recommended fix:** Use a stable booking or session payment key with provider-side idempotency, persist and reconcile an attempt around ambiguous outcomes, and make already successful confirmations return the prior result. Lock or atomically claim the payment transition so concurrent requests cannot both charge.
 
-## 5. Restricted attributes feed matching scores
+## 5. Restricted attributes feed matching scores — fixed
 
 - **Location:** `app/services/matching_service.py:9-12, 33-40`; `scripts/seed.py:193-195`; `app/services/embedding_pipeline.py:9-13`
 - **Category:** Security / Data Integrity
 - **Severity:** High
 - **Description:** `build_member_profile_text` includes every attribute, including restricted health information, in the text used for ranking and stored profile embeddings. Even if the query-side text were filtered later, the seeded and refreshed candidate embeddings would still encode restricted attributes, affecting who is recommended.
-- **Recommended fix:** Exclude `restricted=True` attributes in the shared profile builder, rebuild existing profile embeddings from eligible data, and test both the requesting member's query vector and candidate vectors against restricted-only examples.
+- **Recommended fix:** Exclude `restricted=True` attributes in the shared profile builder and ensure both score vectors derive from eligible text. Ranking now recomputes both sides from filtered attributes, so legacy stored embeddings cannot influence scores; future refreshes also use the filtered builder. Regression tests cover restricted-only candidate data and legacy vectors.
 
 ## Verification limits
 
-The Part 2 knowledge trace uses the seeded PostgreSQL database, and the new regression test failed before the filter and passed afterward. The introduction trace uses isolated SQLite data, not seeded PostgreSQL. The post-fix suite passed (`8 passed`) using an explicit `postgresql+psycopg` test URL; its default `psycopg2` URL still selects an uninstalled driver. Findings 3–5 are supported by code-path analysis rather than live endpoint traces.
+The Part 2 knowledge trace uses the seeded PostgreSQL database, and the new regression test failed before the filter and passed afterward. The introduction trace uses isolated SQLite data, not seeded PostgreSQL; its post-fix response is HTTP 404. The introduction and matching regression suite passed (`9 passed`) against PostgreSQL, including a test where a legacy restricted-only embedding cannot affect a score. Findings 3–4 remain supported by code-path analysis pending their fixes.
 
 The existing, uncommitted `.env.example` edit contains what appears to be an Airtable personal access token. Keep that value out of commits and submission artifacts; if it is a real token, revoke or rotate it. This review did not change the file or reproduce the token.

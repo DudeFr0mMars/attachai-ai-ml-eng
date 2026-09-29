@@ -27,3 +27,7 @@ The user then asked to add and maintain `TERMINAL_LOG.md` and `DESIGN_NOTES.md`,
 The user chose the cross-club knowledge leak for Task 2 and specified adding `club_id` to the filter. I captured a read-only request against the seeded PostgreSQL database before changing the route; its five results included two Oakhurst chunks for a Riverside token. A new regression test failed before the fix because the Oakhurst chunk ranked first.
 
 I added `KnowledgeChunk.club_id == member.club_id` before similarity ordering and the result limit. The same seeded request then returned only Riverside chunks, and the full suite passed with eight tests. I moved this issue to the top of `REVIEW.md` to match the selected Part 2 fix and recorded the literal traces in `TERMINAL_LOG.md`.
+
+## Issue 2 correction: matching also needs the restricted check
+
+The user asked to fix issues 2, 4, and 3 in that order and emphasized the eventual Part 3 idempotency and restricted-data notes. My first issue 2 patch checked introduction text only; the user corrected the scope: matching must also exclude restricted attributes, including data already embedded. I added the shared `restricted IS FALSE` profile filter and made ranking recompute both vectors from eligible attributes so legacy stored vectors cannot affect scores. The new matching tests failed before this correction and passed afterward; the focused introduction and matching run returned nine passing tests.

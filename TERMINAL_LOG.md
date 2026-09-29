@@ -89,6 +89,33 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 8 passed, 1 warning in 1.33s
 ```
 
+## Issue 2 privacy fix — introductions and matching (2026-09-29)
+
+The original cross-club introduction request now returns the following literal response:
+
+```text
+$ DATABASE_URL=sqlite:// .venv/bin/python -m scripts.review_trace
+GET /introductions/1/2?reason=business
+X-Member-Token: riverside-member-1
+HTTP 404
+{"detail": "member not found"}
+```
+
+Before the matching fix, the new regression tests failed because the profile text contained `private diagnosis` and a candidate's restricted-only legacy embedding produced score `1.0`. After the fix, the requested focused run returned:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q tests/test_introductions.py tests/test_matching.py --tb=line
+.........                                                                [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/starlette/testclient.py:40
+  /home/varun/attachai-ai-ml-eng/.venv/lib/python3.13/site-packages/starlette/testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+9 passed, 1 warning in 0.86s
+```
+
+The full suite after this privacy fix also passed: `15 passed, 1 warning in 1.63s`.
+
 ## Part 3 extraction demo
 
 Pending implementation. Record a batch run showing real LLM API calls and the per-message outcome, followed by the same batch run showing idempotency without duplicate attribute rows. Redact credentials and private member text that is not needed for the proof.

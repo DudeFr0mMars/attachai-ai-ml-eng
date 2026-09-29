@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://kindred:kindred@localhost:5432/kindred"
     embed_dim: int = 16
     payment_timeout_trigger_cents: int = 999999
+    introduction_min_confidence: float = 0.7
 
 
 settings = Settings()
