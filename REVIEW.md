@@ -1,8 +1,33 @@
 # Code review
 
-This review covers the starter implementation, before fixes. Findings are ranked by expected business impact. The first finding is the priority fix for Part 2; its decisive lines are `app/routers/introductions.py:19-20`, where caller-supplied member IDs are used without checking either member's club, followed by `:23-25`, where all returned attributes become response text.
+This review describes the starter implementation before fixes. Findings are ranked by expected business impact; the knowledge leak is first because any member can retrieve another club's knowledge without knowing member IDs, and the query returns up to five chunks at once. The Part 2 fix for finding 1 is documented below; the other findings remain open.
 
-## 1. Cross-club introduction exposes restricted member data
+## 1. Knowledge search crosses club boundaries — fixed in Part 2
+
+- **Location:** `app/routers/knowledge.py:19-20, 24-29` (current code; the missing filter was between the query and ordering calls in the starter revision)
+- **Category:** Data Isolation
+- **Severity:** Critical
+- **Description:** The route verifies that the caller belongs to the club named in the URL, but the similarity query searched `KnowledgeChunk` rows from every club. Consequently, a valid Riverside query returned Oakhurst policy text; the nearby URL authorization check did not constrain the database result set.
+- **Recommended fix:** Add `KnowledgeChunk.club_id == member.club_id` to the similarity query before ordering and limiting, and test that even a query closest to another club's chunk returns only the caller's club. This is now implemented and verified by the regression test and seeded-database traces.
+
+### Literal seeded-database trace before and after
+
+Both responses were returned by `DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred .venv/bin/python -m scripts.knowledge_trace` through FastAPI's in-process HTTP test client against the seeded PostgreSQL database. The request is read-only; full output is in `TERMINAL_LOG.md`.
+
+```http
+GET /clubs/riverside/knowledge/query?q=guest%20fees
+X-Member-Token: riverside-member-1
+
+Before — HTTP 200
+[{"chunk_id": 17, "club_id": "riverside", "title": "Guest fees", "body": "Riverside guest fees are $50 per visit, waived for members' immediate family."}, {"chunk_id": 22, "club_id": "oakhurst", "title": "Dress code", "body": "Oakhurst requires collared shirts in all dining areas, no exceptions."}, {"chunk_id": 18, "club_id": "riverside", "title": "Dress code", "body": "Riverside's dress code is smart casual after 6pm, resort wear during the day."}, {"chunk_id": 23, "club_id": "oakhurst", "title": "Opening hours", "body": "Oakhurst is open 6am to midnight, the pool closes at 9pm."}, {"chunk_id": 20, "club_id": "riverside", "title": "Cancellation policy", "body": "Riverside bookings can be cancelled up to 24 hours ahead for a full refund."}]
+
+After — HTTP 200
+[{"chunk_id": 17, "club_id": "riverside", "title": "Guest fees", "body": "Riverside guest fees are $50 per visit, waived for members' immediate family."}, {"chunk_id": 18, "club_id": "riverside", "title": "Dress code", "body": "Riverside's dress code is smart casual after 6pm, resort wear during the day."}, {"chunk_id": 20, "club_id": "riverside", "title": "Cancellation policy", "body": "Riverside bookings can be cancelled up to 24 hours ahead for a full refund."}, {"chunk_id": 19, "club_id": "riverside", "title": "Opening hours", "body": "Riverside is open 7am to 11pm daily, kitchen closes at 10pm."}]
+```
+
+These are the literal response bodies from the running app, also preserved in `TERMINAL_LOG.md`.
+
+## 2. Cross-club introduction exposes restricted member data
 
 - **Location:** `app/routers/introductions.py:19-25`
 - **Category:** Data Isolation / Security
@@ -10,27 +35,7 @@ This review covers the starter implementation, before fixes. Findings are ranked
 - **Description:** Any authenticated member can supply arbitrary member IDs, including IDs from another club, and the endpoint returns those members' attribute text. It also includes `restricted=True` attributes, so a Riverside member can receive an Oakhurst member's private health information; the token check in `get_current_member` proves only that the caller is a member somewhere and does not authorize either requested ID.
 - **Recommended fix:** Resolve both members under the caller's `club_id` and reject missing or cross-club IDs before loading attributes. Filter restricted attributes from introduction input and output, apply a confidence threshold, and return an insufficient-basis response when no eligible attributes remain.
 
-### Literal request/response trace
-
-Run against the unmodified FastAPI route using `DATABASE_URL=sqlite:// .venv/bin/python -m scripts.review_trace`. This is an in-process ASGI HTTP request with an isolated SQLite database containing one Riverside caller and one Oakhurst member with a restricted health attribute; it does not alter the repository's seed data. The runner executes synchronous FastAPI callables directly because worker-thread scheduling hangs in this environment.
-
-```http
-GET /introductions/1/2?reason=business
-X-Member-Token: riverside-member-1
-
-HTTP 200
-{"reason_text": "Because  and recently diagnosed with a chronic condition — a good business match."}
-```
-
-The response above is the literal body returned by the running app, not an expected result. The empty text before `and` is another sign that the endpoint has no grounding or eligibility check.
-
-## 2. Knowledge search crosses club boundaries
-
-- **Location:** `app/routers/knowledge.py:19-20, 28-35`
-- **Category:** Data Isolation
-- **Severity:** Critical
-- **Description:** The route verifies that the caller belongs to the club named in the URL, but the similarity query searches `KnowledgeChunk` rows from every club. Consequently, a valid Riverside query can return Oakhurst policy text and disclose another club's knowledge; the nearby URL authorization check does not constrain the database result set.
-- **Recommended fix:** Add `KnowledgeChunk.club_id == member.club_id` to the similarity query before ordering and limiting, and test that even a query closest to another club's chunk returns only the caller's club.
+The separate pre-fix introduction trace in `TERMINAL_LOG.md` shows this open issue returning restricted health text.
 
 ## 3. Caller controls the payment amount
 
@@ -58,6 +63,6 @@ The response above is the literal body returned by the running app, not an expec
 
 ## Verification limits
 
-The live trace above exercises the first finding through FastAPI's ASGI interface with isolated SQLite data, not the seeded PostgreSQL database. After PostgreSQL access became available, the existing test suite passed (`7 passed`) using an explicit `postgresql+psycopg` test URL; its default `psycopg2` URL still selects an uninstalled driver. Findings 2–5 are supported by code-path analysis rather than live endpoint traces.
+The Part 2 knowledge trace uses the seeded PostgreSQL database, and the new regression test failed before the filter and passed afterward. The introduction trace uses isolated SQLite data, not seeded PostgreSQL. The post-fix suite passed (`8 passed`) using an explicit `postgresql+psycopg` test URL; its default `psycopg2` URL still selects an uninstalled driver. Findings 3–5 are supported by code-path analysis rather than live endpoint traces.
 
 The existing, uncommitted `.env.example` edit contains what appears to be an Airtable personal access token. Keep that value out of commits and submission artifacts; if it is a real token, revoke or rotate it. This review did not change the file or reproduce the token.

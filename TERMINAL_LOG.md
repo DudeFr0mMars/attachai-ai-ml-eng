@@ -34,7 +34,7 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 
 The negative elapsed time is what the test runner printed; it is not an edited estimate.
 
-## Bug trace, before fix — 2026-09-29
+## Initial review bug trace — introduction issue, still open (2026-09-29)
 
 `review_trace.py` sent this request through FastAPI's in-process ASGI interface against an isolated SQLite database. It did not query the seeded PostgreSQL database. The route and authorization code were unmodified.
 
@@ -46,9 +46,48 @@ HTTP 200
 {"reason_text": "Because  and recently diagnosed with a chronic condition — a good business match."}
 ```
 
-## Fix trace, after fix
+## Part 2 selected bug trace — cross-club knowledge, before fix (2026-09-29)
 
-Pending Part 2 implementation. Record the literal same request and response after the fix, plus any additional variants needed to show the cause is fixed.
+The request below used the seeded PostgreSQL database through FastAPI's in-process HTTP client and did not write to it. A Riverside token received two Oakhurst chunks.
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred .venv/bin/python -m scripts.knowledge_trace
+GET /clubs/riverside/knowledge/query?q=guest%20fees
+X-Member-Token: riverside-member-1
+HTTP 200
+[{"chunk_id": 17, "club_id": "riverside", "title": "Guest fees", "body": "Riverside guest fees are $50 per visit, waived for members' immediate family."}, {"chunk_id": 22, "club_id": "oakhurst", "title": "Dress code", "body": "Oakhurst requires collared shirts in all dining areas, no exceptions."}, {"chunk_id": 18, "club_id": "riverside", "title": "Dress code", "body": "Riverside's dress code is smart casual after 6pm, resort wear during the day."}, {"chunk_id": 23, "club_id": "oakhurst", "title": "Opening hours", "body": "Oakhurst is open 6am to midnight, the pool closes at 9pm."}, {"chunk_id": 20, "club_id": "riverside", "title": "Cancellation policy", "body": "Riverside bookings can be cancelled up to 24 hours ahead for a full refund."}]
+```
+
+The focused regression test failed before the fix:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q tests/test_knowledge.py::test_query_never_returns_other_club_chunks --tb=short
+F                                                                        [100%]
+E   AssertionError: assert ['Private Oak...erside rules'] == ['Riverside rules']
+E     At index 0 diff: 'Private Oakhurst policy' != 'Riverside rules'
+FAILED tests/test_knowledge.py::test_query_never_returns_other_club_chunks - ...
+1 failed, 1 warning in 0.85s
+```
+
+## Part 2 fix trace — same request, after fix (2026-09-29)
+
+The only route change was to filter `KnowledgeChunk.club_id == member.club_id` before similarity ordering and `limit(5)`.
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred .venv/bin/python -m scripts.knowledge_trace
+GET /clubs/riverside/knowledge/query?q=guest%20fees
+X-Member-Token: riverside-member-1
+HTTP 200
+[{"chunk_id": 17, "club_id": "riverside", "title": "Guest fees", "body": "Riverside guest fees are $50 per visit, waived for members' immediate family."}, {"chunk_id": 18, "club_id": "riverside", "title": "Dress code", "body": "Riverside's dress code is smart casual after 6pm, resort wear during the day."}, {"chunk_id": 20, "club_id": "riverside", "title": "Cancellation policy", "body": "Riverside bookings can be cancelled up to 24 hours ahead for a full refund."}, {"chunk_id": 19, "club_id": "riverside", "title": "Opening hours", "body": "Riverside is open 7am to 11pm daily, kitchen closes at 10pm."}]
+```
+
+The full test suite after the fix returned:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+........                                                                 [100%]
+8 passed, 1 warning in 1.33s
+```
 
 ## Part 3 extraction demo
 

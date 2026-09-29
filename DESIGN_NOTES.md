@@ -4,7 +4,11 @@ These notes distinguish current code from planned work. Update the pending answe
 
 ## Part 2 — multi-turn session flow
 
-In `app/services/session_flow.py:31-54`, `advance_turn` calls `payment_mock_client.charge` at line 36 before saving a booking or `PaymentAttempt`; the simulated crash at lines 38-39 leaves the session awaiting confirmation even though the provider recorded a charge. A retry can charge again, so the fix should claim the payment transition and use a stable provider idempotency key, then reconcile an ambiguous result before allowing another charge; `app/models.py:96` already provides an `idempotency_key` field, but the current payment client does not accept one. This is separate from the Part 2 priority issue in `REVIEW.md`, where the introduction endpoint exposes another club's restricted attributes.
+In `app/services/session_flow.py:31-54`, `advance_turn` calls `payment_mock_client.charge` at line 36 before saving a booking or `PaymentAttempt`; the simulated crash at lines 38-39 leaves the session awaiting confirmation even though the provider recorded a charge. A retry can charge again, so the fix should claim the payment transition and use a stable provider idempotency key, then reconcile an ambiguous result before allowing another charge; `app/models.py:96` already provides an `idempotency_key` field, but the current payment client does not accept one. This session-flow issue remains open; the selected Part 2 fix addresses the cross-club knowledge leak.
+
+## Part 2 — knowledge isolation fix
+
+`app/routers/knowledge.py` first verifies that the URL club matches the authenticated member's club, then filters `KnowledgeChunk.club_id == member.club_id` in SQL before cosine-distance ordering and `limit(5)`. Filtering after the limit was rejected: an Oakhurst chunk could occupy one of the five slots and displace a valid Riverside result even if removed from the final response. The regression test places a more similar Oakhurst chunk in the database and asserts that the response contains only the Riverside chunk; the seeded-database before/after trace is in `TERMINAL_LOG.md`.
 
 ## Part 3 — structured extraction pipeline
 

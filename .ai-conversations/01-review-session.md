@@ -21,3 +21,9 @@ At the end of the initial review, no user correction or follow-up had occurred. 
 The user reported that the seed was done and Docker was up, then asked to run `review_trace.py` once and inspect the logs. The trace returned HTTP 200 with the same cross-club restricted health text; I explained that the script uses isolated SQLite data and does not exercise the seeded PostgreSQL database. Docker's database log showed readiness and `docker compose ps` showed a healthy container.
 
 The user then asked to add and maintain `TERMINAL_LOG.md` and `DESIGN_NOTES.md`, including the assignment's required sections. I added actual setup verification, the baseline test run, and the existing bug trace, while marking fix, extraction, eval, bonus, and final-run outputs as pending. A read-only database check found 2 clubs, 14 members, 9 messages, 9 attributes, and 8 knowledge chunks; the existing seven tests passed against `kindred_test` when database access was available.
+
+## Part 2 follow-up: selected knowledge leak
+
+The user chose the cross-club knowledge leak for Task 2 and specified adding `club_id` to the filter. I captured a read-only request against the seeded PostgreSQL database before changing the route; its five results included two Oakhurst chunks for a Riverside token. A new regression test failed before the fix because the Oakhurst chunk ranked first.
+
+I added `KnowledgeChunk.club_id == member.club_id` before similarity ordering and the result limit. The same seeded request then returned only Riverside chunks, and the full suite passed with eight tests. I moved this issue to the top of `REVIEW.md` to match the selected Part 2 fix and recorded the literal traces in `TERMINAL_LOG.md`.

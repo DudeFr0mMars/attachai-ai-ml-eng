@@ -41,3 +41,34 @@ def test_query_rejects_non_member(db):
         headers={"X-Member-Token": "tok-a"},
     )
     assert resp.status_code == 403
+
+
+def test_query_never_returns_other_club_chunks(db):
+    db.add_all([Club(id="riverside", name="Riverside"), Club(id="oakhurst", name="Oakhurst")])
+    db.add(Member(club_id="riverside", name="A", email="a@example.com", token="tok-a", role="member"))
+    db.add_all(
+        [
+            KnowledgeChunk(
+                club_id="riverside",
+                title="Riverside rules",
+                body="Riverside opens at seven.",
+                embedding=embedding_client.embed("Riverside opens at seven."),
+            ),
+            KnowledgeChunk(
+                club_id="oakhurst",
+                title="Private Oakhurst policy",
+                body="Oakhurst guest fees are $75.",
+                embedding=embedding_client.embed("Oakhurst guest fees are $75."),
+            ),
+        ]
+    )
+    db.commit()
+
+    resp = client.get(
+        "/clubs/riverside/knowledge/query",
+        params={"q": "Oakhurst guest fees are $75."},
+        headers={"X-Member-Token": "tok-a"},
+    )
+
+    assert resp.status_code == 200
+    assert [chunk["title"] for chunk in resp.json()] == ["Riverside rules"]
