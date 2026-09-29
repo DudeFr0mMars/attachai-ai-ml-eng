@@ -171,16 +171,38 @@ These tests use the real database with the mock payment provider, not a real pay
 
 ## Part 3 extraction demo
 
-Pending implementation. Record a batch run showing real LLM API calls and the per-message outcome, followed by the same batch run showing idempotency without duplicate attribute rows. Redact credentials and private member text that is not needed for the proof.
+The first attempt to reach OpenAI from the restricted shell failed at transport level; the approved network run succeeded. `scripts.extraction_demo` appended four golden-set messages to seeded Riverside Member 5 because all nine original seeded messages already had attributes. It did not edit or delete original seed rows. The script invoked the actual endpoint with the default OpenAI extractor, no test double, and read back the shared attributes table and matching profile. The second pass used the same IDs and made no new API calls. The API key was not printed.
+
+```text
+$ .venv/bin/python -m scripts.extraction_demo
+pass 1: HTTP 200 {'results': [{'message_id': 28, 'status': 'processed', 'attribute_count': 2}, {'message_id': 29, 'status': 'processed', 'attribute_count': 1}, {'message_id': 30, 'status': 'processed', 'attribute_count': 1}, {'message_id': 31, 'status': 'processed', 'attribute_count': 1}]}
+pass 2: HTTP 200 {'results': [{'message_id': 28, 'status': 'already_processed', 'attribute_count': 2}, {'message_id': 29, 'status': 'already_processed', 'attribute_count': 1}, {'message_id': 30, 'status': 'already_processed', 'attribute_count': 1}, {'message_id': 31, 'status': 'already_processed', 'attribute_count': 1}]}
+persisted attributes=5 restricted=1
+restricted therapy excluded from matching profile: True
+```
 
 ## Part 3 eval
 
-Pending implementation. Preserve the real API eval command, per-record results, overall score, chosen threshold, and process exit code.
+`scripts.eval_extraction` used the real OpenAI Responses API on `eval/golden_set.json` (not the test double), scored kind, exact restricted flag, and at least one keyword on the same attribute, and exited 0. The first sandboxed command had transport failures due to network restriction. The latest approved network run, after tightening the restricted-label scoring, returned:
+
+```text
+$ .venv/bin/python -m scripts.eval_extraction
+record 1: kind=True restricted=True keyword=True pass=True attributes=2
+record 2: kind=True restricted=True keyword=True pass=True attributes=1
+record 3: kind=True restricted=True keyword=True pass=True attributes=1
+record 4: kind=True restricted=True keyword=True pass=True attributes=1
+overall: 4/4 = 100.0%; threshold=75%; restricted_all_correct=True
+exit code: 0
+```
 
 ## Bonus Part 4a / 4b demo
 
-Pending decision; optional. Record a literal demo only if either bonus part is attempted.
+Not attempted as new Part 3 work. The earlier introduction privacy fix overlaps with some Part 4a requirements but does not return attribute provenance; Part 4b is not implemented.
 
 ## Final test run
 
-Pending completion of the required implementation. Record the full final command and observed result here.
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+.................................                                        [100%]
+33 passed, 1 warning in 2.67s
+```

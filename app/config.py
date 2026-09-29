@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     embed_dim: int = 16
     payment_timeout_trigger_cents: int = 999999
     introduction_min_confidence: float = 0.7
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
 
 
 settings = Settings()
