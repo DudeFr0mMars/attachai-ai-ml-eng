@@ -24,7 +24,7 @@ There's no login flow — every member has a fixed bearer-style token, sent as `
 
 - `GET /clubs/{club_id}/knowledge/query?q=...` — RAG-style lookup over a club's knowledge base
 - `GET /members/{member_id}/candidates?reason=...` — ranks other members in the same club as introduction candidates
-- `GET /introductions/{member_a_id}/{member_b_id}?reason=...` — generates a human-readable reason for an introduction
+- `GET /introductions/{member_a_id}/{member_b_id}?reason=business` — returns a grounded reason plus `used_attributes` (source IDs, member IDs, kind, text, confidence) for audit. Only same-club, non-restricted attributes with confidence strictly above `INTRODUCTION_MIN_CONFIDENCE` (default `0.7`) are eligible. If either member has none, it returns `insufficient basis for an introduction` and an empty audit list. Allowed reasons are `business`, `investment`, `advice`, and `shared_interests`.
 - `POST /bookings/{booking_id}/confirm-payment` — charges a booking via a mock payment client
 - `POST /sessions`, `GET /sessions/{id}`, `POST /sessions/{id}/turn` — a minimal multi-turn booking flow (book → confirm → charge), plus a `refund_dispute` intent that always escalates the session instead of being auto-resolved
 - `GET /sessions/debug/payment-charge-log` (admin only) — every charge attempted against the mock payment client, in order

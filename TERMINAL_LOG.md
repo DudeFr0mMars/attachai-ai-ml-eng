@@ -195,14 +195,39 @@ overall: 4/4 = 100.0%; threshold=75%; restricted_all_correct=True
 exit code: 0
 ```
 
-## Bonus Part 4a / 4b demo
+The eval runner was extended to save its actual per-record output in `eval/golden_set_results.json`. The new real-API run also exited 0:
 
-Not attempted as new Part 3 work. The earlier introduction privacy fix overlaps with some Part 4a requirements but does not return attribute provenance; Part 4b is not implemented.
+```text
+$ .venv/bin/python -m scripts.eval_extraction
+record 1: kind=True restricted=True keyword=True pass=True attributes=2
+record 2: kind=True restricted=True keyword=True pass=True attributes=1
+record 3: kind=True restricted=True keyword=True pass=True attributes=1
+record 4: kind=True restricted=True keyword=True pass=True attributes=1
+overall: 4/4 = 100.0%; threshold=75%; restricted_all_correct=True
+results_json: /home/varun/attachai-ai-ml-eng/eval/golden_set_results.json
+```
+
+## Bonus Part 4a demo — seeded PostgreSQL (2026-09-29)
+
+`scripts.grounded_intro_demo` sent read-only requests through the actual FastAPI route against seeded PostgreSQL and checked each returned audit ID against the source row. No restricted or below-threshold attribute was used. The run exited 0:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred .venv/bin/python -m scripts.grounded_intro_demo
+GET /introductions/31/32?reason=business
+HTTP 200
+{"reason_text": "For business: raising a seed round, looking for angel investors; angel investor, has backed a dozen seed-stage startups.", "used_attributes": [{"id": 19, "member_id": 31, "kind": "need", "text": "raising a seed round, looking for angel investors", "confidence": 0.9}, {"id": 21, "member_id": 32, "kind": "offer", "text": "angel investor, has backed a dozen seed-stage startups", "confidence": 0.95}]}
+GET /introductions/31/33?reason=business
+HTTP 200
+{"reason_text": "insufficient basis for an introduction", "used_attributes": []}
+seeded provenance and privacy checks: passed
+```
+
+Part 4b was not attempted.
 
 ## Final test run
 
 ```text
 $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
 .................................                                        [100%]
-33 passed, 1 warning in 2.67s
+34 passed, 1 warning in 2.39s
 ```

@@ -1,0 +1,107 @@
+{
+  "dataset": "eval/golden_set.json",
+  "generated_at_utc": "2026-09-29T23:03:58.759185+00:00",
+  "model": "gpt-4o-mini",
+  "records": [
+    {
+      "record": 1,
+      "expected_kind": "need",
+      "expected_restricted": false,
+      "expected_keywords": [
+        "series a",
+        "vc"
+      ],
+      "extracted_attributes": [
+        {
+          "kind": "need",
+          "text": "intros to VCs",
+          "confidence": 0.9,
+          "restricted": false
+        },
+        {
+          "kind": "need",
+          "text": "raising a Series A in the next few months",
+          "confidence": 0.7,
+          "restricted": false
+        }
+      ],
+      "kind_match": true,
+      "restricted_match": true,
+      "keyword_match": true,
+      "passed": true,
+      "error": null
+    },
+    {
+      "record": 2,
+      "expected_kind": "offer",
+      "expected_restricted": false,
+      "expected_keywords": [
+        "series a",
+        "fundrais"
+      ],
+      "extracted_attributes": [
+        {
+          "kind": "offer",
+          "text": "Experience leading fundraising for three Series A rounds as an operator.",
+          "confidence": 1.0,
+          "restricted": false
+        }
+      ],
+      "kind_match": true,
+      "restricted_match": true,
+      "keyword_match": true,
+      "passed": true,
+      "error": null
+    },
+    {
+      "record": 3,
+      "expected_kind": "context",
+      "expected_restricted": true,
+      "expected_keywords": [
+        "therapy"
+      ],
+      "extracted_attributes": [
+        {
+          "kind": "context",
+          "text": "Member has been in therapy for the last year and feels it has helped a lot.",
+          "confidence": 0.9,
+          "restricted": true
+        }
+      ],
+      "kind_match": true,
+      "restricted_match": true,
+      "keyword_match": true,
+      "passed": true,
+      "error": null
+    },
+    {
+      "record": 4,
+      "expected_kind": "interest",
+      "expected_restricted": false,
+      "expected_keywords": [
+        "running"
+      ],
+      "extracted_attributes": [
+        {
+          "kind": "interest",
+          "text": "Weekly running club on Tuesday mornings",
+          "confidence": 0.9,
+          "restricted": false
+        }
+      ],
+      "kind_match": true,
+      "restricted_match": true,
+      "keyword_match": true,
+      "passed": true,
+      "error": null
+    }
+  ],
+  "overall": {
+    "passed_records": 4,
+    "total_records": 4,
+    "score": 1.0,
+    "threshold": 0.75,
+    "restricted_all_correct": true,
+    "passed": true
+  }
+}
