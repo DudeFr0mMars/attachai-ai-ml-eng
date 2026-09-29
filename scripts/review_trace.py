@@ -1,82 +1,64 @@
-"""Reproduce the introduction authorization issue without changing seed data.
+"""Read-only introduction privacy trace against the seeded PostgreSQL database.
 
-Run with: DATABASE_URL=sqlite:// .venv/bin/python -m scripts.review_trace
+Run with DATABASE_URL pointing at the seeded kindred database, not kindred_test.
 """
 
 import json
-import asyncio
 
-import httpx
-import fastapi.dependencies.utils
-import fastapi.routing
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
+from fastapi.testclient import TestClient
 
-from app.db import get_db
+from app.db import SessionLocal, engine
 from app.main import app
-from app.models import Base, Club, Member, MemberAttribute
+from app.models import Member, MemberAttribute
 
 
 def main() -> None:
-    engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-    )
-    Base.metadata.create_all(engine)
+    if engine.url.get_backend_name() != "postgresql" or engine.url.database != "kindred":
+        raise SystemExit("review_trace requires the seeded PostgreSQL kindred database")
 
-    with Session(engine) as db:
-        db.add_all([Club(id="riverside", name="Riverside"), Club(id="oakhurst", name="Oakhurst")])
-        db.flush()
-        caller = Member(
-            club_id="riverside", name="Caller", email="caller@example.test",
-            token="riverside-member-1", role="member",
-        )
-        other = Member(
-            club_id="oakhurst", name="Other", email="other@example.test",
-            token="oakhurst-member-1", role="member",
-        )
-        db.add_all([caller, other])
-        db.flush()
-        db.add(MemberAttribute(
-            member_id=other.id, club_id="oakhurst", kind="context",
-            text="recently diagnosed with a chronic condition", confidence=0.9,
-            restricted=True,
-        ))
-        db.commit()
-        caller_id = caller.id
-        other_id = other.id
+    with SessionLocal() as db:
+        caller = db.query(Member).filter(Member.token == "riverside-member-1").one()
+        cross_club = db.query(Member).filter(Member.token == "oakhurst-member-4").one()
+        same_club_private = db.query(Member).filter(Member.token == "riverside-member-3").one()
+        for member in (cross_club, same_club_private):
+            exists = db.query(MemberAttribute.id).filter(
+                MemberAttribute.member_id == member.id,
+                MemberAttribute.club_id == member.club_id,
+                MemberAttribute.restricted.is_(True),
+            ).first()
+            if not exists:
+                raise SystemExit(f"seeded restricted attribute missing for {member.token}")
 
-    async def test_db():
-        with Session(engine) as db:
-            yield db
+    with TestClient(app) as client:
+        for target in (cross_club, same_club_private):
+            path = f"/introductions/{caller.id}/{target.id}?reason=business"
+            response = client.get(path, headers={"X-Member-Token": caller.token})
+            print(f"GET {path}")
+            print(f"X-Member-Token: {caller.token}")
+            print(f"HTTP {response.status_code}")
+            print(json.dumps(response.json(), ensure_ascii=False))
+            if target is cross_club and response.status_code != 404:
+                raise SystemExit("cross-club introduction was not rejected")
+            if target is same_club_private and (
+                response.status_code != 200
+                or "insufficient" not in response.json().get("reason_text", "").lower()
+            ):
+                raise SystemExit("restricted-only member influenced introduction")
 
-    # This environment cannot schedule AnyIO worker threads. Execute the same
-    # synchronous route/dependency callables in the ASGI event loop for this trace.
-    async def direct_call(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
-    original_route_runner = fastapi.routing.run_in_threadpool
-    original_dependency_runner = fastapi.dependencies.utils.run_in_threadpool
-    fastapi.routing.run_in_threadpool = direct_call
-    fastapi.dependencies.utils.run_in_threadpool = direct_call
-
-    app.dependency_overrides[get_db] = test_db
-    try:
-        path = f"/introductions/{caller_id}/{other_id}?reason=business"
-        async def request():
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
-                return await client.get(path, headers={"X-Member-Token": "riverside-member-1"})
-
-        response = asyncio.run(request())
+        path = f"/members/{caller.id}/candidates?reason=business"
+        response = client.get(path, headers={"X-Member-Token": caller.token})
         print(f"GET {path}")
-        print("X-Member-Token: riverside-member-1")
+        print(f"X-Member-Token: {caller.token}")
         print(f"HTTP {response.status_code}")
         print(json.dumps(response.json(), ensure_ascii=False))
-    finally:
-        app.dependency_overrides.clear()
-        fastapi.routing.run_in_threadpool = original_route_runner
-        fastapi.dependencies.utils.run_in_threadpool = original_dependency_runner
-        engine.dispose()
+        if response.status_code != 200:
+            raise SystemExit("seeded matching request failed")
+        candidates = response.json()
+        restricted_only = next((c for c in candidates if c["member_id"] == same_club_private.id), None)
+        if restricted_only is None or restricted_only["score"] != 0:
+            raise SystemExit("restricted-only member affected matching score")
+        if any(c["member_id"] == cross_club.id for c in candidates):
+            raise SystemExit("cross-club member appeared in matching")
 
 
 if __name__ == "__main__":

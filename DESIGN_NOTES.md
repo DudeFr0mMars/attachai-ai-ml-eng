@@ -36,7 +36,7 @@ Payment idempotency for issue 4 uses stable payment-operation keys. Part 3 extra
 
 ### Non-obvious choices
 
-The review bug trace uses an isolated SQLite database and the real FastAPI route because the seeded PostgreSQL container was initially inaccessible from the restricted shell; this preserved seed data while producing a literal response. Once database access was available, the existing PostgreSQL test suite passed, but the review trace itself remains an isolated reproduction. For Part 3, document decisions such as the processed-message key, handling zero-result extraction, and embedding refresh only after the implementation is settled.
+The historical pre-fix introduction trace used isolated SQLite data when seeded PostgreSQL access was unavailable. It is retained only as evidence of the original code path, not as seeded-data validation. Once database access was available, `scripts.review_trace` was replaced with a read-only seeded-PostgreSQL trace: it resolves actual members and restricted attributes, verifies cross-club rejection and insufficient-basis introduction output, and checks that the restricted-only member has matching score `0.0`. The test suite uses PostgreSQL `kindred_test`; confirmation was not run on the production seed because it would charge/mutate its bookings. For Part 3, prompt design must use both seeded `ConversationMessage` rows and `eval/golden_set.json`, and the real API eval must run on that golden file. Document processed-message and zero-result decisions after implementation.
 
 ## Closing question
 

@@ -34,9 +34,9 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 
 The negative elapsed time is what the test runner printed; it is not an edited estimate.
 
-## Initial review bug trace — introduction issue, still open (2026-09-29)
+## Historical pre-fix review bug trace — isolated reproduction (2026-09-29)
 
-`review_trace.py` sent this request through FastAPI's in-process ASGI interface against an isolated SQLite database. It did not query the seeded PostgreSQL database. The route and authorization code were unmodified.
+The original `review_trace.py` sent this request through FastAPI's in-process ASGI interface against an isolated SQLite database. It did not query seeded PostgreSQL, so this output is only a historical code-path reproduction. The script has since been replaced with a seeded-data trace below.
 
 ```text
 $ DATABASE_URL=sqlite:// .venv/bin/python -m scripts.review_trace
@@ -91,7 +91,7 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 
 ## Issue 2 privacy fix — introductions and matching (2026-09-29)
 
-The original cross-club introduction request now returns the following literal response:
+The initial post-fix trace below still used isolated SQLite data; it is superseded by the seeded PostgreSQL trace later in this log:
 
 ```text
 $ DATABASE_URL=sqlite:// .venv/bin/python -m scripts.review_trace
@@ -115,6 +115,36 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 ```
 
 The full suite after this privacy fix also passed: `15 passed, 1 warning in 1.63s`.
+
+## Seeded PostgreSQL privacy validation — supersedes isolated trace (2026-09-29)
+
+`scripts.review_trace` now refuses a non-PostgreSQL or non-`kindred` database, resolves actual seeded members and verifies their restricted attributes, then exercises the real introduction and matching routes read-only. This run exited 0:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred .venv/bin/python -m scripts.review_trace
+GET /introductions/31/40?reason=business
+X-Member-Token: riverside-member-1
+HTTP 404
+{"detail": "member not found"}
+GET /introductions/31/33?reason=business
+X-Member-Token: riverside-member-1
+HTTP 200
+{"reason_text": "insufficient basis for an introduction"}
+GET /members/31/candidates?reason=business
+X-Member-Token: riverside-member-1
+HTTP 200
+[{"member_id": 32, "name": "Riverside Member 2", "score": 0.0}, {"member_id": 33, "name": "Riverside Member 3", "score": 0.0}, {"member_id": 35, "name": "Riverside Member 5", "score": 0.0}, {"member_id": 36, "name": "Riverside Member 6", "score": 0.0}, {"member_id": 34, "name": "Riverside Member 4", "score": -0.1213}]
+```
+
+Seeded Riverside Member 3 has only a restricted attribute; their matching score is `0.0`. The Oakhurst target is absent from the candidates. This script performs no writes. Part 3's `eval/golden_set.json` eval is still pending, not implied by this trace.
+
+The PostgreSQL test suite was rerun after this correction:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+.............................                                            [100%]
+29 passed, 1 warning in 2.04s
+```
 
 ## Issues 4 and 3 — payment bug, fix, and amount traces (2026-09-29)
 
