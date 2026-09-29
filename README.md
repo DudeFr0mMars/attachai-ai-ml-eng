@@ -1,5 +1,7 @@
 # Kindred Concierge — Assessment Starter
 
+Link to Recording : https://www.loom.com/share/c700631784d14001aa93448832c15d95
+
 A small FastAPI + PostgreSQL/pgvector service simulating Kindred's member-matching and concierge backend. Used for the Round 3 take-home — see the assignment brief you were given for what to build.
 
 ## Setup
