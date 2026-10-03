@@ -1,6 +1,6 @@
 {
   "dataset": "eval/golden_set.json",
-  "generated_at_utc": "2026-09-29T23:03:58.759185+00:00",
+  "generated_at_utc": "2026-10-01T06:01:19.156448+00:00",
   "model": "gpt-4o-mini",
   "records": [
     {
@@ -15,12 +15,12 @@
         {
           "kind": "need",
           "text": "intros to VCs",
-          "confidence": 0.9,
+          "confidence": 0.8,
           "restricted": false
         },
         {
           "kind": "need",
-          "text": "raising a Series A in the next few months",
+          "text": "raise a Series A",
           "confidence": 0.7,
           "restricted": false
         }
@@ -42,7 +42,7 @@
       "extracted_attributes": [
         {
           "kind": "offer",
-          "text": "Experience leading fundraising for three Series A rounds as an operator.",
+          "text": "Help with fundraising for Series A rounds",
           "confidence": 1.0,
           "restricted": false
         }
@@ -63,7 +63,7 @@
       "extracted_attributes": [
         {
           "kind": "context",
-          "text": "Member has been in therapy for the last year and feels it has helped a lot.",
+          "text": "Member has been in therapy for the last year and feels it has helped them significantly.",
           "confidence": 0.9,
           "restricted": true
         }
@@ -84,8 +84,8 @@
       "extracted_attributes": [
         {
           "kind": "interest",
-          "text": "Weekly running club on Tuesday mornings",
-          "confidence": 0.9,
+          "text": "weekly running club on Tuesday mornings",
+          "confidence": 0.8,
           "restricted": false
         }
       ],

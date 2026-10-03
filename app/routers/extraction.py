@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_member
 from app.db import get_db
+from app.llm_client import LLMClient, get_llm_client
 from app.models import ConversationMessage, Member, MemberAttribute
-from app.services.attribute_extraction import OpenAIAttributeExtractor, enforce_restricted, get_attribute_extractor
+from app.services.attribute_extraction import enforce_restricted
 
 router = APIRouter(prefix="/clubs", tags=["extraction"])
 
@@ -23,7 +24,7 @@ def extract_attributes(
     payload: ExtractAttributesIn,
     db: Session = Depends(get_db),
     caller: Member = Depends(get_current_member),
-    extractor: OpenAIAttributeExtractor = Depends(get_attribute_extractor),
+    llm_client: LLMClient = Depends(get_llm_client),
 ):
     if caller.role not in {"admin", "service"} or caller.club_id != club_id:
         raise HTTPException(status_code=403, detail="club admin or service role required")
@@ -56,16 +57,16 @@ def extract_attributes(
                 db.rollback()
                 continue
 
-            extracted = enforce_restricted(message.body, extractor.extract(message.body))
+            extracted = enforce_restricted(message.body, llm_client.extract_attributes(message.body))
             for attribute in extracted:
                 db.add(MemberAttribute(
                     member_id=message.member_id,
                     club_id=message.club_id,
                     source_message_id=message.id,
-                    kind=attribute.kind,
-                    text=attribute.text,
-                    confidence=attribute.confidence,
-                    restricted=attribute.restricted,
+                    kind=attribute["kind"],
+                    text=attribute["text"],
+                    confidence=attribute["confidence"],
+                    restricted=attribute["restricted"],
                 ))
             db.commit()
             outcomes.append({"message_id": message_id, "status": "processed", "attribute_count": len(extracted)})

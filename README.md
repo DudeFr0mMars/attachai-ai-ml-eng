@@ -31,7 +31,7 @@ There's no login flow — every member has a fixed bearer-style token, sent as `
 - `POST /sessions`, `GET /sessions/{id}`, `POST /sessions/{id}/turn` — a minimal multi-turn booking flow (book → confirm → charge), plus a `refund_dispute` intent that always escalates the session instead of being auto-resolved
 - `GET /sessions/debug/payment-charge-log` (admin only) — every charge attempted against the mock payment client, in order
 
-All of it runs with zero external API keys — `app/embeddings.py` is a deterministic, local, hash-based stand-in for a real embeddings API, used everywhere in the pre-existing code. **Part 3 of the assignment (which you're building, not reviewing) is the one place a real LLM API is required** — see `app/llm_client.py` for the interface you're implementing against.
+The pre-existing routes run without external API keys: `app/embeddings.py` is a deterministic local stand-in for embeddings. Part 3 extraction uses the real OpenAI Responses API through the `LLMClient` contract in `app/llm_client.py`; set `OPENAI_API_KEY` in `.env` before running extraction or the golden-set eval.
 
 ## Notes for your own testing
 

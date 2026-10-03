@@ -231,3 +231,25 @@ $ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test 
 .................................                                        [100%]
 34 passed, 1 warning in 2.39s
 ```
+
+## LLM client interface refactor — 2026-10-01
+
+The real OpenAI request, strict-output parsing, and retry strategy were moved into the starter's `app/llm_client.py` under `LLMClient.extract_attributes()`. The route now injects that interface; tests use both the provided `FakeLLMClient` directly and a mapping subclass for multi-message cases. The focused PostgreSQL extraction tests passed (`4 passed, 1 warning in 1.23s`), then the full PostgreSQL suite passed after adding the direct fake-client contract test:
+
+```text
+$ DATABASE_URL=postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test .venv/bin/python -m pytest -q --tb=short
+...................................                                      [100%]
+35 passed, 1 warning in 2.29s
+```
+
+The first post-refactor real eval attempt reached OpenAI but the then-current key received HTTP 401 on each record (0/4, exit 1). The user refreshed the key; the next real API run succeeded, replaced `eval/golden_set_results.json`, and exited 0:
+
+```text
+$ .venv/bin/python -m scripts.eval_extraction
+record 1: kind=True restricted=True keyword=True pass=True attributes=2
+record 2: kind=True restricted=True keyword=True pass=True attributes=1
+record 3: kind=True restricted=True keyword=True pass=True attributes=1
+record 4: kind=True restricted=True keyword=True pass=True attributes=1
+overall: 4/4 = 100.0%; threshold=75%; restricted_all_correct=True
+results_json: /home/varun/attachai-ai-ml-eng/eval/golden_set_results.json
+```

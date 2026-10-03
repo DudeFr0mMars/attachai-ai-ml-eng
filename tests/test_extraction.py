@@ -2,19 +2,20 @@ from fastapi.testclient import TestClient
 import httpx
 
 from app.config import settings
+from app.llm_client import ExtractedAttribute, FakeLLMClient, OpenAILLMClient, get_llm_client
 from app.main import app
 from app.models import Club, ConversationMessage, Member, MemberAttribute
-from app.services.attribute_extraction import ExtractedAttribute, OpenAIAttributeExtractor, get_attribute_extractor
+from app.services.attribute_extraction import enforce_restricted
 
 client = TestClient(app)
 
 
-class FakeExtractor:
+class MappingLLMClient(FakeLLMClient):
     def __init__(self, outputs):
+        super().__init__()
         self.outputs = outputs
-        self.calls = []
 
-    def extract(self, body):
+    def extract_attributes(self, body):
         self.calls.append(body)
         value = self.outputs[body]
         if isinstance(value, Exception):
@@ -37,12 +38,12 @@ def seed_messages(db, bodies):
 
 def test_happy_path_restricted_flag_and_idempotency(db):
     member, messages = seed_messages(db, ["I need a fractional CFO", "I've been in therapy"])
-    fake = FakeExtractor({
+    fake = MappingLLMClient({
         messages[0].body: [ExtractedAttribute(kind="need", text="needs a fractional CFO", confidence=0.95, restricted=False)],
         # A mistaken model flag must not put explicit therapy data into matching.
         messages[1].body: [ExtractedAttribute(kind="context", text="has been in therapy", confidence=0.95, restricted=False)],
     })
-    app.dependency_overrides[get_attribute_extractor] = lambda: fake
+    app.dependency_overrides[get_llm_client] = lambda: fake
     try:
         payload = {"message_ids": [m.id for m in messages]}
         first = client.post("/clubs/riverside/extract-attributes", json=payload, headers={"X-Member-Token": "admin"})
@@ -60,15 +61,36 @@ def test_happy_path_restricted_flag_and_idempotency(db):
     assert all(a.club_id == "riverside" for a in attrs)
 
 
+def test_provided_fake_llm_client_implements_route_contract(db):
+    _, messages = seed_messages(db, ["Looking for a chess partner"])
+    fake = FakeLLMClient(canned_response=[
+        ExtractedAttribute(kind="interest", text="looking for a chess partner", confidence=0.9, restricted=False)
+    ])
+    app.dependency_overrides[get_llm_client] = lambda: fake
+    try:
+        response = client.post(
+            "/clubs/riverside/extract-attributes",
+            json={"message_ids": [messages[0].id]},
+            headers={"X-Member-Token": "admin"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "processed"
+    assert fake.calls == ["Looking for a chess partner"]
+    assert db.query(MemberAttribute).filter(MemberAttribute.source_message_id == messages[0].id).count() == 1
+
+
 def test_batch_continues_after_message_three_fails(db):
     _, messages = seed_messages(db, ["one", "two", "three", "four", "five"])
-    fake = FakeExtractor({
+    fake = MappingLLMClient({
         body: RuntimeError("permanent LLM failure") if body == "three" else [
             ExtractedAttribute(kind="interest", text=f"interest {body}", confidence=0.9, restricted=False)
         ]
         for body in ["one", "two", "three", "four", "five"]
     })
-    app.dependency_overrides[get_attribute_extractor] = lambda: fake
+    app.dependency_overrides[get_llm_client] = lambda: fake
     try:
         response = client.post(
             "/clubs/riverside/extract-attributes",
@@ -91,8 +113,8 @@ def test_authorization_and_cross_club_message_id(db):
     foreign = ConversationMessage(club_id="oakhurst", member_id=other.id, body="private")
     db.add(foreign)
     db.commit()
-    fake = FakeExtractor({"hello": [], "private": []})
-    app.dependency_overrides[get_attribute_extractor] = lambda: fake
+    fake = MappingLLMClient({"hello": [], "private": []})
+    app.dependency_overrides[get_llm_client] = lambda: fake
     try:
         denied_member = client.post("/clubs/riverside/extract-attributes", json={"message_ids": [messages[0].id]}, headers={"X-Member-Token": "member"})
         denied_foreign_admin = client.post("/clubs/riverside/extract-attributes", json={"message_ids": [messages[0].id]}, headers={"X-Member-Token": "other"})
@@ -121,11 +143,12 @@ def test_transient_openai_failures_retry_then_succeed(monkeypatch):
         })
 
     monkeypatch.setattr(httpx, "post", fake_post)
-    monkeypatch.setattr("app.services.attribute_extraction.time.sleep", delays.append)
-    monkeypatch.setattr("app.services.attribute_extraction.random.uniform", lambda *_: 0)
-    attributes = OpenAIAttributeExtractor().extract("I've been in therapy")
+    monkeypatch.setattr("app.llm_client.time.sleep", delays.append)
+    monkeypatch.setattr("app.llm_client.random.uniform", lambda *_: 0)
+    attributes = OpenAILLMClient().extract_attributes("I've been in therapy")
 
     assert len(calls) == 3
     assert delays == [0.5, 1.0]
-    assert attributes[0].restricted is True
+    assert attributes[0]["restricted"] is False
+    assert enforce_restricted("I've been in therapy", attributes)[0]["restricted"] is True
     assert all(call[0] == "https://api.openai.com/v1/responses" for call in calls)

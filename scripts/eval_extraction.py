@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.services.attribute_extraction import OpenAIAttributeExtractor
+from app.llm_client import OpenAILLMClient
+from app.services.attribute_extraction import enforce_restricted
 
 
 GOLDEN_SET = Path(__file__).resolve().parents[1] / "eval" / "golden_set.json"
@@ -14,13 +15,13 @@ PASS_THRESHOLD = 0.75
 
 def main() -> int:
     records = json.loads(GOLDEN_SET.read_text())
-    extractor = OpenAIAttributeExtractor()
+    llm_client = OpenAILLMClient()
     passes = 0
     restricted_correct = True
     results = []
     for index, record in enumerate(records, 1):
         try:
-            attributes = extractor.extract(record["message"])
+            attributes = enforce_restricted(record["message"], llm_client.extract_attributes(record["message"]))
         except Exception as exc:
             print(f"record {index}: ERROR {exc}")
             restricted_correct = False
@@ -40,18 +41,18 @@ def main() -> int:
 
         relevant = [
             a for a in attributes
-            if any(keyword.lower() in a.text.lower() for keyword in record["expected_keywords"])
+            if any(keyword.lower() in a["text"].lower() for keyword in record["expected_keywords"])
         ]
-        kind_ok = any(a.kind == record["expected_kind"] for a in relevant)
+        kind_ok = any(a["kind"] == record["expected_kind"] for a in relevant)
         restricted_ok = bool(relevant) and all(
-            a.restricted is record["expected_restricted"] for a in relevant
+            a["restricted"] is record["expected_restricted"] for a in relevant
         )
         text_ok = bool(relevant)
         # The three checks must describe the same extracted attribute.
         matched = any(
-            a.kind == record["expected_kind"]
-            and a.restricted is record["expected_restricted"]
-            and any(keyword.lower() in a.text.lower() for keyword in record["expected_keywords"])
+            a["kind"] == record["expected_kind"]
+            and a["restricted"] is record["expected_restricted"]
+            and any(keyword.lower() in a["text"].lower() for keyword in record["expected_keywords"])
             for a in attributes
         )
         passes += matched
@@ -61,7 +62,7 @@ def main() -> int:
             "expected_kind": record["expected_kind"],
             "expected_restricted": record["expected_restricted"],
             "expected_keywords": record["expected_keywords"],
-            "extracted_attributes": [attribute.model_dump() for attribute in attributes],
+            "extracted_attributes": attributes,
             "kind_match": kind_ok,
             "restricted_match": restricted_ok,
             "keyword_match": text_ok,
@@ -78,7 +79,7 @@ def main() -> int:
     report = {
         "dataset": "eval/golden_set.json",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "model": extractor.model,
+        "model": llm_client.model,
         "records": results,
         "overall": {
             "passed_records": passes,
